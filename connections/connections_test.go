@@ -18,7 +18,7 @@ type testExecutor struct{}
 
 func (e *testExecutor) StreamReply(
 	_ context.Context,
-	_ string,
+	_ []acpserver.ContentBlock,
 	_ acpserver.RuntimeToolInvoker,
 	onChunk func(chunk string) error,
 ) (string, error) {

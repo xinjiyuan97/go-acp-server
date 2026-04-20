@@ -27,7 +27,7 @@ type MyExecutor struct{}
 
 func (e *MyExecutor) StreamReply(
     ctx context.Context,
-    prompt string,
+    prompt []acpserver.ContentBlock,
     tools acpserver.RuntimeToolInvoker,
     onChunk func(string) error,
 ) (string, error) {

@@ -103,7 +103,7 @@ type writeAndTerminalExecutor struct{}
 
 func (e *writeAndTerminalExecutor) StreamReply(
 	ctx context.Context,
-	_ string,
+	_ []ContentBlock,
 	tools RuntimeToolInvoker,
 	onChunk func(chunk string) error,
 ) (string, error) {

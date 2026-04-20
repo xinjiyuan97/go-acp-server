@@ -13,13 +13,14 @@ type fakeExecutor struct {
 	reply string
 	err   error
 
-	mu         sync.Mutex
-	lastPrompt string
+	mu          sync.Mutex
+	lastPrompt  []ContentBlock
+	lastPromptT string
 }
 
 func (f *fakeExecutor) StreamReply(
 	_ context.Context,
-	prompt string,
+	prompt []ContentBlock,
 	_ RuntimeToolInvoker,
 	onChunk func(chunk string) error,
 ) (string, error) {
@@ -27,7 +28,8 @@ func (f *fakeExecutor) StreamReply(
 		return "", f.err
 	}
 	f.mu.Lock()
-	f.lastPrompt = prompt
+	f.lastPrompt = cloneContentBlocks(prompt)
+	f.lastPromptT = extractPromptText(prompt)
 	f.mu.Unlock()
 	if onChunk != nil && f.reply != "" {
 		if err := onChunk(f.reply); err != nil {
@@ -40,7 +42,13 @@ func (f *fakeExecutor) StreamReply(
 func (f *fakeExecutor) prompt() string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return f.lastPrompt
+	return f.lastPromptT
+}
+
+func (f *fakeExecutor) promptBlocks() []ContentBlock {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return cloneContentBlocks(f.lastPrompt)
 }
 
 type contextCaptureExecutor struct {
@@ -51,7 +59,7 @@ type contextCaptureExecutor struct {
 
 func (e *contextCaptureExecutor) StreamReply(
 	ctx context.Context,
-	_ string,
+	_ []ContentBlock,
 	_ RuntimeToolInvoker,
 	onChunk func(chunk string) error,
 ) (string, error) {
@@ -258,7 +266,7 @@ type richUpdateExecutor struct{}
 
 func (e *richUpdateExecutor) StreamReply(
 	_ context.Context,
-	_ string,
+	_ []ContentBlock,
 	_ RuntimeToolInvoker,
 	_ func(chunk string) error,
 ) (string, error) {
@@ -267,7 +275,7 @@ func (e *richUpdateExecutor) StreamReply(
 
 func (e *richUpdateExecutor) StreamReplyWithUpdates(
 	_ context.Context,
-	_ string,
+	_ []ContentBlock,
 	_ RuntimeToolInvoker,
 	updates PromptUpdateWriter,
 ) (string, error) {
@@ -396,7 +404,7 @@ func TestCancelBeforePromptReturnsCancelled(t *testing.T) {
 	}
 }
 
-func TestPromptWithoutTextReturnsInvalidParams(t *testing.T) {
+func TestPromptWithoutTextIsAccepted(t *testing.T) {
 	srv := NewServer(&fakeExecutor{reply: "ok"}, nil, "test")
 	sessionID := createSession(t, srv)
 
@@ -410,15 +418,69 @@ func TestPromptWithoutTextReturnsInvalidParams(t *testing.T) {
 		},
 	}))
 
-	if len(out) != 1 {
-		t.Fatalf("expected 1 output line, got %d: %v", len(out), out)
+	var resp map[string]any
+	for _, raw := range out {
+		var payload map[string]any
+		mustUnmarshalLine(t, raw, &payload)
+		if id, ok := payload["id"].(float64); ok && int(id) == 4 {
+			resp = payload
+			break
+		}
+	}
+	if resp == nil {
+		t.Fatalf("missing session/prompt response: %v", out)
+	}
+	result := resp["result"].(map[string]any)
+	if got := result["stopReason"].(string); got != "end_turn" {
+		t.Fatalf("unexpected stopReason: %s", got)
+	}
+}
+
+func TestPromptPassesImageBlockToExecutor(t *testing.T) {
+	exec := &fakeExecutor{reply: "ok"}
+	srv := NewServer(exec, nil, "test")
+	sessionID := createSession(t, srv)
+
+	out := runServe(t, srv, line(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      41,
+		"method":  "session/prompt",
+		"params": map[string]any{
+			"sessionId": sessionID,
+			"prompt": []map[string]any{
+				{"type": "image", "mimeType": "image/png", "data": "ZmFrZQ==", "uri": "file:///tmp/x.png"},
+			},
+		},
+	}))
+
+	var foundResponse bool
+	for _, raw := range out {
+		var payload map[string]any
+		mustUnmarshalLine(t, raw, &payload)
+		if id, ok := payload["id"].(float64); ok && int(id) == 41 {
+			result := payload["result"].(map[string]any)
+			if got := result["stopReason"].(string); got != "end_turn" {
+				t.Fatalf("unexpected stopReason: %s", got)
+			}
+			foundResponse = true
+		}
+	}
+	if !foundResponse {
+		t.Fatalf("missing session/prompt response: %v", out)
 	}
 
-	var resp map[string]any
-	mustUnmarshalLine(t, out[0], &resp)
-	errObj := resp["error"].(map[string]any)
-	if got := int(errObj["code"].(float64)); got != -32602 {
-		t.Fatalf("unexpected error code: %d", got)
+	blocks := exec.promptBlocks()
+	if len(blocks) != 1 {
+		t.Fatalf("expected one prompt block, got %+v", blocks)
+	}
+	if got, _ := blocks[0]["type"].(string); got != "image" {
+		t.Fatalf("expected image block type, got %+v", blocks[0]["type"])
+	}
+	if got, _ := blocks[0]["mimeType"].(string); got != "image/png" {
+		t.Fatalf("expected image mimeType, got %+v", blocks[0]["mimeType"])
+	}
+	if got, _ := blocks[0]["data"].(string); got != "ZmFrZQ==" {
+		t.Fatalf("expected image data to pass through, got %+v", blocks[0]["data"])
 	}
 }
 
@@ -506,7 +568,7 @@ type toolCallingExecutor struct{}
 
 func (e *toolCallingExecutor) StreamReply(
 	ctx context.Context,
-	_ string,
+	_ []ContentBlock,
 	tools RuntimeToolInvoker,
 	onChunk func(chunk string) error,
 ) (string, error) {

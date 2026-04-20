@@ -52,7 +52,7 @@ const (
 type PromptExecutor interface {
 	StreamReply(
 		ctx context.Context,
-		prompt string,
+		prompt []ContentBlock,
 		tools RuntimeToolInvoker,
 		onChunk func(chunk string) error,
 	) (string, error)
@@ -65,7 +65,7 @@ type PromptExecutorWithUpdates interface {
 	PromptExecutor
 	StreamReplyWithUpdates(
 		ctx context.Context,
-		prompt string,
+		prompt []ContentBlock,
 		tools RuntimeToolInvoker,
 		updates PromptUpdateWriter,
 	) (string, error)

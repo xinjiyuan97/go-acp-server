@@ -236,11 +236,11 @@ func (s *Server) handlePrompt(ctx context.Context, req incomingMessage) {
 		return
 	}
 
-	userPromptText := extractPromptText(args.Prompt)
-	if strings.TrimSpace(userPromptText) == "" {
-		s.writeError(req.ID, errInvalidParams, "prompt must include at least one text content block")
+	if len(args.Prompt) == 0 {
+		s.writeError(req.ID, errInvalidParams, "prompt must include at least one content block")
 		return
 	}
+	userPromptText := extractPromptText(args.Prompt)
 
 	if s.consumeCancelFlag(args.SessionID) {
 		s.writeResult(req.ID, promptResponse{StopReason: stopReasonCancelled})
@@ -258,13 +258,15 @@ func (s *Server) handlePrompt(ctx context.Context, req incomingMessage) {
 	updates := newPromptUpdateWriter(s, args.SessionID, promptCtx, func() {
 		chunkEmitted = true
 	})
-	if err := updates.UserMessageChunk(userPromptText); err != nil {
-		if s.consumeCancelFlag(args.SessionID) || promptCtx.Err() == context.Canceled {
-			s.writeResult(req.ID, promptResponse{StopReason: stopReasonCancelled})
+	if strings.TrimSpace(userPromptText) != "" {
+		if err := updates.UserMessageChunk(userPromptText); err != nil {
+			if s.consumeCancelFlag(args.SessionID) || promptCtx.Err() == context.Canceled {
+				s.writeResult(req.ID, promptResponse{StopReason: stopReasonCancelled})
+				return
+			}
+			s.writeError(req.ID, errInternalError, fmt.Sprintf("failed to emit user_message_chunk: %v", err))
 			return
 		}
-		s.writeError(req.ID, errInternalError, fmt.Sprintf("failed to emit user_message_chunk: %v", err))
-		return
 	}
 
 	session.mu.Lock()
@@ -276,7 +278,7 @@ func (s *Server) handlePrompt(ctx context.Context, req incomingMessage) {
 	session.mu.Unlock()
 	promptCtx = withSessionRuntimeContext(promptCtx, args.SessionID, snapshot)
 
-	promptText := userPromptText
+	promptBlocks := cloneContentBlocks(args.Prompt)
 
 	if err := s.emitSessionContextUpdates(promptCtx, updates, snapshot, toolInvoker); err != nil {
 		if s.consumeCancelFlag(args.SessionID) || promptCtx.Err() == context.Canceled {
@@ -290,9 +292,9 @@ func (s *Server) handlePrompt(ctx context.Context, req incomingMessage) {
 	var reply string
 	var err error
 	if richExecutor, ok := s.executor.(PromptExecutorWithUpdates); ok {
-		reply, err = richExecutor.StreamReplyWithUpdates(promptCtx, promptText, toolInvoker, updates)
+		reply, err = richExecutor.StreamReplyWithUpdates(promptCtx, promptBlocks, toolInvoker, updates)
 	} else {
-		reply, err = s.executor.StreamReply(promptCtx, promptText, toolInvoker, func(chunk string) error {
+		reply, err = s.executor.StreamReply(promptCtx, promptBlocks, toolInvoker, func(chunk string) error {
 			return updates.AgentMessageChunk(chunk)
 		})
 	}
@@ -480,17 +482,32 @@ func (s *Server) handleClientResponse(msg incomingMessage) {
 	}
 }
 
-func extractPromptText(blocks []contentBlock) string {
+func extractPromptText(blocks []ContentBlock) string {
 	lines := make([]string, 0, len(blocks))
 	for _, block := range blocks {
-		if block.Type == "text" {
-			text := strings.TrimSpace(block.Text)
-			if text != "" {
-				lines = append(lines, text)
-			}
+		blockType, _ := block["type"].(string)
+		if blockType != "text" {
+			continue
+		}
+		text, _ := block["text"].(string)
+		text = strings.TrimSpace(text)
+		if text != "" {
+			lines = append(lines, text)
 		}
 	}
 	return strings.Join(lines, "\n")
+}
+
+func cloneContentBlocks(in []ContentBlock) []ContentBlock {
+	out := make([]ContentBlock, 0, len(in))
+	for _, block := range in {
+		clone := make(ContentBlock, len(block))
+		for k, v := range block {
+			clone[k] = v
+		}
+		out = append(out, clone)
+	}
+	return out
 }
 
 func decodeParams(raw json.RawMessage, out any) error {

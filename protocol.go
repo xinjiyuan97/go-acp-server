@@ -119,7 +119,7 @@ type sessionInfo struct {
 
 type promptRequest struct {
 	SessionID string         `json:"sessionId"`
-	Prompt    []contentBlock `json:"prompt"`
+	Prompt    []ContentBlock `json:"prompt"`
 }
 
 type promptResponse struct {
@@ -137,13 +137,14 @@ type sessionNotification struct {
 
 type sessionUpdate struct {
 	SessionUpdate string       `json:"sessionUpdate"`
-	Content       contentBlock `json:"content"`
+	Content       ContentBlock `json:"content"`
 }
 
-type contentBlock struct {
-	Type string `json:"type"`
-	Text string `json:"text,omitempty"`
-}
+// ContentBlock is one ACP content block (e.g. text/image/audio/resource).
+//
+// It intentionally keeps raw key/value pairs so the server can pass through
+// evolving ACP block shapes without dropping fields.
+type ContentBlock map[string]any
 
 type clientCapabilities struct {
 	FS       fileSystemCapabilities `json:"fs,omitempty"`
