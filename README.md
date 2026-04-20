@@ -79,6 +79,46 @@ Supported ACP client methods:
 
 Tool exposure is capability-driven (from `initialize.clientCapabilities`).
 
+## Connections Extensions
+
+This module now includes a `connections` package to extend ACP transport usage
+beyond stdio.
+
+```go
+import (
+    acpserver "github.com/Pudbot-BeanAI/fucking-agents/crates/go-acp-server"
+    "github.com/Pudbot-BeanAI/fucking-agents/crates/go-acp-server/connections"
+)
+```
+
+Create a shared endpoint:
+
+```go
+srv := acpserver.NewServer(&MyExecutor{}, os.Stderr, "v0.1.0")
+endpoint := connections.NewEndpoint(srv)
+```
+
+HTTP extension (NDJSON over POST):
+
+```go
+handler := connections.NewHTTPHandler(endpoint, connections.HTTPHandlerOptions{
+    MaxBodyBytes: 4 * 1024 * 1024,
+})
+http.ListenAndServe(":8080", handler)
+```
+
+WebSocket extension (library-agnostic adapter):
+
+```go
+type MyWSConn struct{}
+
+func (c *MyWSConn) ReadText(ctx context.Context) (string, error)   { /* ... */ }
+func (c *MyWSConn) WriteText(ctx context.Context, text string) error { /* ... */ }
+func (c *MyWSConn) Close() error { /* ... */ }
+
+_ = connections.ServeWebSocket(context.Background(), endpoint, &MyWSConn{})
+```
+
 ## Logging
 
 Pass a logger (e.g. `os.Stderr`) to `NewServer` to inspect runtime behavior:
