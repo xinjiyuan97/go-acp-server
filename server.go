@@ -48,17 +48,10 @@ const (
 	errInternalError  = -32603
 )
 
-// ChatTurn stores one user/assistant exchange inside a session.
-type ChatTurn struct {
-	User      string
-	Assistant string
-}
-
 // PromptExecutor executes one ACP prompt turn.
 type PromptExecutor interface {
 	StreamReply(
 		ctx context.Context,
-		history []ChatTurn,
 		prompt string,
 		tools RuntimeToolInvoker,
 		onChunk func(chunk string) error,
@@ -72,7 +65,6 @@ type PromptExecutorWithUpdates interface {
 	PromptExecutor
 	StreamReplyWithUpdates(
 		ctx context.Context,
-		history []ChatTurn,
 		prompt string,
 		tools RuntimeToolInvoker,
 		updates PromptUpdateWriter,
@@ -141,7 +133,6 @@ type sessionState struct {
 	Title string
 
 	mu         sync.Mutex
-	history    []ChatTurn
 	mcpServers []mcpServer
 	updatedAt  time.Time
 }

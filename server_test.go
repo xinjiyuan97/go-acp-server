@@ -19,7 +19,6 @@ type fakeExecutor struct {
 
 func (f *fakeExecutor) StreamReply(
 	_ context.Context,
-	_ []ChatTurn,
 	prompt string,
 	_ RuntimeToolInvoker,
 	onChunk func(chunk string) error,
@@ -42,6 +41,38 @@ func (f *fakeExecutor) prompt() string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.lastPrompt
+}
+
+type contextCaptureExecutor struct {
+	mu   sync.Mutex
+	meta SessionRuntimeContext
+	ok   bool
+}
+
+func (e *contextCaptureExecutor) StreamReply(
+	ctx context.Context,
+	_ string,
+	_ RuntimeToolInvoker,
+	onChunk func(chunk string) error,
+) (string, error) {
+	meta, ok := SessionRuntimeContextFromContext(ctx)
+	e.mu.Lock()
+	e.meta = meta
+	e.ok = ok
+	e.mu.Unlock()
+	reply := "ok"
+	if onChunk != nil {
+		if err := onChunk(reply); err != nil {
+			return "", err
+		}
+	}
+	return reply, nil
+}
+
+func (e *contextCaptureExecutor) snapshot() (SessionRuntimeContext, bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.meta, e.ok
 }
 
 func TestInitialize(t *testing.T) {
@@ -175,11 +206,58 @@ func TestPromptEmitsSessionUpdate(t *testing.T) {
 	}
 }
 
+func TestPromptContextIncludesSessionRuntimeMetadata(t *testing.T) {
+	exec := &contextCaptureExecutor{}
+	srv := NewServer(exec, nil, "test")
+
+	out := runServe(t, srv, line(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "session/new",
+		"params": map[string]any{
+			"cwd": "/tmp",
+			"mcpServers": []map[string]any{
+				{"type": "stdio", "name": "mcp-demo", "command": "mcp", "args": []string{"--x"}},
+			},
+		},
+	}))
+	if len(out) != 1 {
+		t.Fatalf("expected 1 output line, got %d: %v", len(out), out)
+	}
+
+	var payload map[string]any
+	mustUnmarshalLine(t, out[0], &payload)
+	sessionID := payload["result"].(map[string]any)["sessionId"].(string)
+
+	_ = runServe(t, srv, line(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "session/prompt",
+		"params": map[string]any{
+			"sessionId": sessionID,
+			"prompt":    []map[string]any{{"type": "text", "text": "hello"}},
+		},
+	}))
+
+	meta, ok := exec.snapshot()
+	if !ok {
+		t.Fatalf("executor did not receive session runtime context")
+	}
+	if meta.SessionID != sessionID {
+		t.Fatalf("unexpected session id in context: %q", meta.SessionID)
+	}
+	if meta.CWD != "/tmp" {
+		t.Fatalf("unexpected cwd in context: %q", meta.CWD)
+	}
+	if len(meta.MCPServers) != 1 || meta.MCPServers[0].Name != "mcp-demo" {
+		t.Fatalf("unexpected mcp servers in context: %+v", meta.MCPServers)
+	}
+}
+
 type richUpdateExecutor struct{}
 
 func (e *richUpdateExecutor) StreamReply(
 	_ context.Context,
-	_ []ChatTurn,
 	_ string,
 	_ RuntimeToolInvoker,
 	_ func(chunk string) error,
@@ -189,7 +267,6 @@ func (e *richUpdateExecutor) StreamReply(
 
 func (e *richUpdateExecutor) StreamReplyWithUpdates(
 	_ context.Context,
-	_ []ChatTurn,
 	_ string,
 	_ RuntimeToolInvoker,
 	updates PromptUpdateWriter,
@@ -345,7 +422,7 @@ func TestPromptWithoutTextReturnsInvalidParams(t *testing.T) {
 	}
 }
 
-func TestPromptIncludesClientToolsContext(t *testing.T) {
+func TestPromptPassesUserTextWithoutServerPreface(t *testing.T) {
 	exec := &fakeExecutor{reply: "ok"}
 	srv := NewServer(exec, nil, "test")
 
@@ -420,17 +497,8 @@ func TestPromptIncludesClientToolsContext(t *testing.T) {
 	}
 
 	p := exec.prompt()
-	for _, expected := range []string{
-		"fs.read_text_file",
-		"fs.write_text_file",
-		"terminal.create/output/wait_for_exit/kill/release",
-		"mcp[stdio]: demo-mcp",
-		"User prompt:",
-		"hello",
-	} {
-		if !strings.Contains(p, expected) {
-			t.Fatalf("prompt missing %q, got: %s", expected, p)
-		}
+	if got := strings.TrimSpace(p); got != "hello" {
+		t.Fatalf("prompt should be raw user text, got: %q", got)
 	}
 }
 
@@ -438,7 +506,6 @@ type toolCallingExecutor struct{}
 
 func (e *toolCallingExecutor) StreamReply(
 	ctx context.Context,
-	_ []ChatTurn,
 	_ string,
 	tools RuntimeToolInvoker,
 	onChunk func(chunk string) error,

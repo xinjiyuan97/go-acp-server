@@ -18,7 +18,6 @@ type testExecutor struct{}
 
 func (e *testExecutor) StreamReply(
 	_ context.Context,
-	_ []acpserver.ChatTurn,
 	_ string,
 	_ acpserver.RuntimeToolInvoker,
 	onChunk func(chunk string) error,

@@ -27,11 +27,15 @@ type MyExecutor struct{}
 
 func (e *MyExecutor) StreamReply(
     ctx context.Context,
-    history []acpserver.ChatTurn,
     prompt string,
     tools acpserver.RuntimeToolInvoker,
     onChunk func(string) error,
 ) (string, error) {
+    // optional: read prompt-scoped session metadata from context
+    if sid, ok := acpserver.SessionIDFromContext(ctx); ok {
+        _ = sid
+    }
+
     // 1) optional: call tools.InvokeTool(...) if your model/tool loop decides to use tools
     // 2) stream chunks through onChunk
     // 3) return final assistant text

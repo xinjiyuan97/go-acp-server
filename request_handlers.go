@@ -268,15 +268,15 @@ func (s *Server) handlePrompt(ctx context.Context, req incomingMessage) {
 	}
 
 	session.mu.Lock()
-	history := append([]ChatTurn(nil), session.history...)
 	snapshot := sessionSnapshot{
 		cwd:        session.CWD,
 		mcpServers: append([]mcpServer(nil), session.mcpServers...),
 	}
 	toolInvoker := s.newRuntimeToolInvoker(args.SessionID, snapshot.cwd)
 	session.mu.Unlock()
+	promptCtx = withSessionRuntimeContext(promptCtx, args.SessionID, snapshot)
 
-	promptText := enrichPromptWithACPTools(userPromptText, snapshot, s.getClientCapabilities())
+	promptText := userPromptText
 
 	if err := s.emitSessionContextUpdates(promptCtx, updates, snapshot, toolInvoker); err != nil {
 		if s.consumeCancelFlag(args.SessionID) || promptCtx.Err() == context.Canceled {
@@ -290,15 +290,14 @@ func (s *Server) handlePrompt(ctx context.Context, req incomingMessage) {
 	var reply string
 	var err error
 	if richExecutor, ok := s.executor.(PromptExecutorWithUpdates); ok {
-		reply, err = richExecutor.StreamReplyWithUpdates(promptCtx, history, promptText, toolInvoker, updates)
+		reply, err = richExecutor.StreamReplyWithUpdates(promptCtx, promptText, toolInvoker, updates)
 	} else {
-		reply, err = s.executor.StreamReply(promptCtx, history, promptText, toolInvoker, func(chunk string) error {
+		reply, err = s.executor.StreamReply(promptCtx, promptText, toolInvoker, func(chunk string) error {
 			return updates.AgentMessageChunk(chunk)
 		})
 	}
 	if err == nil {
 		session.mu.Lock()
-		session.history = append(session.history, ChatTurn{User: userPromptText, Assistant: reply})
 		session.updatedAt = time.Now().UTC()
 		sessionUpdatedAt = formatRFC3339UTC(session.updatedAt)
 		sessionTitle = strings.TrimSpace(session.Title)
@@ -479,38 +478,6 @@ func (s *Server) handleClientResponse(msg incomingMessage) {
 	if ok {
 		ch <- msg
 	}
-}
-
-func enrichPromptWithACPTools(prompt string, snapshot sessionSnapshot, caps clientCapabilities) string {
-	lines := make([]string, 0, 8)
-	if caps.FS.ReadTextFile {
-		lines = append(lines, "- fs.read_text_file")
-	}
-	if caps.FS.WriteTextFile {
-		lines = append(lines, "- fs.write_text_file")
-	}
-	if caps.Terminal {
-		lines = append(lines, "- terminal.create/output/wait_for_exit/kill/release")
-	}
-
-	for _, m := range snapshot.mcpServers {
-		name := strings.TrimSpace(m.Name)
-		if name == "" {
-			name = "(unnamed)"
-		}
-		typ := strings.TrimSpace(m.Type)
-		if typ == "" {
-			typ = "unknown"
-		}
-		lines = append(lines, fmt.Sprintf("- mcp[%s]: %s", typ, name))
-	}
-
-	if len(lines) == 0 {
-		return prompt
-	}
-
-	return "ACP client tools available in this session:\n" + strings.Join(lines, "\n") +
-		"\n\nUse these tools when appropriate.\n\nUser prompt:\n" + prompt
 }
 
 func extractPromptText(blocks []contentBlock) string {
