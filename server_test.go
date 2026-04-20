@@ -22,7 +22,7 @@ func (f *fakeExecutor) StreamReply(
 	_ context.Context,
 	prompt []ContentBlock,
 	_ RuntimeToolInvoker,
-	onChunk func(chunk string) error,
+	_ PromptUpdateWriter,
 ) (string, error) {
 	if f.err != nil {
 		return "", f.err
@@ -31,11 +31,6 @@ func (f *fakeExecutor) StreamReply(
 	f.lastPrompt = cloneContentBlocks(prompt)
 	f.lastPromptT = extractPromptText(prompt)
 	f.mu.Unlock()
-	if onChunk != nil && f.reply != "" {
-		if err := onChunk(f.reply); err != nil {
-			return "", err
-		}
-	}
 	return f.reply, nil
 }
 
@@ -61,20 +56,14 @@ func (e *contextCaptureExecutor) StreamReply(
 	ctx context.Context,
 	_ []ContentBlock,
 	_ RuntimeToolInvoker,
-	onChunk func(chunk string) error,
+	_ PromptUpdateWriter,
 ) (string, error) {
 	meta, ok := SessionRuntimeContextFromContext(ctx)
 	e.mu.Lock()
 	e.meta = meta
 	e.ok = ok
 	e.mu.Unlock()
-	reply := "ok"
-	if onChunk != nil {
-		if err := onChunk(reply); err != nil {
-			return "", err
-		}
-	}
-	return reply, nil
+	return "ok", nil
 }
 
 func (e *contextCaptureExecutor) snapshot() (SessionRuntimeContext, bool) {
@@ -265,15 +254,6 @@ func TestPromptContextIncludesSessionRuntimeMetadata(t *testing.T) {
 type richUpdateExecutor struct{}
 
 func (e *richUpdateExecutor) StreamReply(
-	_ context.Context,
-	_ []ContentBlock,
-	_ RuntimeToolInvoker,
-	_ func(chunk string) error,
-) (string, error) {
-	return "legacy", nil
-}
-
-func (e *richUpdateExecutor) StreamReplyWithUpdates(
 	_ context.Context,
 	_ []ContentBlock,
 	_ RuntimeToolInvoker,
@@ -570,18 +550,13 @@ func (e *toolCallingExecutor) StreamReply(
 	ctx context.Context,
 	_ []ContentBlock,
 	tools RuntimeToolInvoker,
-	onChunk func(chunk string) error,
+	_ PromptUpdateWriter,
 ) (string, error) {
 	result, err := tools.InvokeTool(ctx, "call-1", toolFSReadTextFile, `{"path":"a.txt"}`)
 	if err != nil {
 		return "", err
 	}
 	reply := "read ok: " + result
-	if onChunk != nil {
-		if err := onChunk(reply); err != nil {
-			return "", err
-		}
-	}
 	return reply, nil
 }
 

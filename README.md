@@ -29,7 +29,7 @@ func (e *MyExecutor) StreamReply(
     ctx context.Context,
     prompt []acpserver.ContentBlock,
     tools acpserver.RuntimeToolInvoker,
-    onChunk func(string) error,
+    updates acpserver.PromptUpdateWriter,
 ) (string, error) {
     // optional: read prompt-scoped session metadata from context
     if sid, ok := acpserver.SessionIDFromContext(ctx); ok {
@@ -37,17 +37,13 @@ func (e *MyExecutor) StreamReply(
     }
 
     // 1) optional: call tools.InvokeTool(...) if your model/tool loop decides to use tools
-    // 2) stream chunks through onChunk
+    // 2) stream chunks via updates.AgentMessageChunk(...)
     // 3) return final assistant text
     reply := "hello from executor"
-    if onChunk != nil {
-        _ = onChunk(reply)
-    }
+    _ = updates.AgentMessageChunk(reply)
     return reply, nil
 }
 ```
-
-If you want to stream richer ACP updates (thought/plan/mode/config/commands), implement `PromptExecutorWithUpdates` and emit through `PromptUpdateWriter`.
 
 By default, server-side prompt flow already emits dynamic context updates before model generation:
 

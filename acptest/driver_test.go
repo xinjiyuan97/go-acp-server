@@ -16,7 +16,7 @@ func (e *echoExecutor) StreamReply(
 	_ context.Context,
 	prompt []acpserver.ContentBlock,
 	_ acpserver.RuntimeToolInvoker,
-	onChunk func(chunk string) error,
+	_ acpserver.PromptUpdateWriter,
 ) (string, error) {
 	text := ""
 	for _, block := range prompt {
@@ -29,13 +29,7 @@ func (e *echoExecutor) StreamReply(
 			break
 		}
 	}
-	reply := "echo:" + text
-	if onChunk != nil {
-		if err := onChunk(reply); err != nil {
-			return "", err
-		}
-	}
-	return reply, nil
+	return "echo:" + text, nil
 }
 
 type toolExecutor struct{}
@@ -44,19 +38,13 @@ func (e *toolExecutor) StreamReply(
 	ctx context.Context,
 	_ []acpserver.ContentBlock,
 	tools acpserver.RuntimeToolInvoker,
-	onChunk func(chunk string) error,
+	_ acpserver.PromptUpdateWriter,
 ) (string, error) {
 	content, err := tools.InvokeTool(ctx, "read-1", "fs_read_text_file", `{"path":"a.txt"}`)
 	if err != nil {
 		return "", err
 	}
-	reply := "content=" + content
-	if onChunk != nil {
-		if err := onChunk(reply); err != nil {
-			return "", err
-		}
-	}
-	return reply, nil
+	return "content=" + content, nil
 }
 
 func TestDriverSupportsMultiTurnAndFormatting(t *testing.T) {

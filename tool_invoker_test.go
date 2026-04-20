@@ -105,7 +105,7 @@ func (e *writeAndTerminalExecutor) StreamReply(
 	ctx context.Context,
 	_ []ContentBlock,
 	tools RuntimeToolInvoker,
-	onChunk func(chunk string) error,
+	_ PromptUpdateWriter,
 ) (string, error) {
 	if _, err := tools.InvokeTool(ctx, "write-1", toolFSWriteTextFile, `{"path":"note.txt","content":"hello"}`); err != nil {
 		return "", err
@@ -126,13 +126,7 @@ func (e *writeAndTerminalExecutor) StreamReply(
 		return "", err
 	}
 
-	reply := "done"
-	if onChunk != nil {
-		if err := onChunk(reply); err != nil {
-			return "", err
-		}
-	}
-	return reply, nil
+	return "done", nil
 }
 
 func TestPromptInvokesWriteAndTerminalTools(t *testing.T) {

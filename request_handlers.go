@@ -291,13 +291,7 @@ func (s *Server) handlePrompt(ctx context.Context, req incomingMessage) {
 
 	var reply string
 	var err error
-	if richExecutor, ok := s.executor.(PromptExecutorWithUpdates); ok {
-		reply, err = richExecutor.StreamReplyWithUpdates(promptCtx, promptBlocks, toolInvoker, updates)
-	} else {
-		reply, err = s.executor.StreamReply(promptCtx, promptBlocks, toolInvoker, func(chunk string) error {
-			return updates.AgentMessageChunk(chunk)
-		})
-	}
+	reply, err = s.executor.StreamReply(promptCtx, promptBlocks, toolInvoker, updates)
 	if err == nil {
 		session.mu.Lock()
 		session.updatedAt = time.Now().UTC()

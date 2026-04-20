@@ -20,13 +20,9 @@ func (e *testExecutor) StreamReply(
 	_ context.Context,
 	_ []acpserver.ContentBlock,
 	_ acpserver.RuntimeToolInvoker,
-	onChunk func(chunk string) error,
+	_ acpserver.PromptUpdateWriter,
 ) (string, error) {
-	reply := "ok"
-	if onChunk != nil {
-		_ = onChunk(reply)
-	}
-	return reply, nil
+	return "ok", nil
 }
 
 func jsonLine(v any) string {

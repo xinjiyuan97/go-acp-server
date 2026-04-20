@@ -54,19 +54,6 @@ type PromptExecutor interface {
 		ctx context.Context,
 		prompt []ContentBlock,
 		tools RuntimeToolInvoker,
-		onChunk func(chunk string) error,
-	) (string, error)
-}
-
-// PromptExecutorWithUpdates can stream rich ACP session/update events.
-//
-// If implemented, the server will prefer this method over PromptExecutor.StreamReply.
-type PromptExecutorWithUpdates interface {
-	PromptExecutor
-	StreamReplyWithUpdates(
-		ctx context.Context,
-		prompt []ContentBlock,
-		tools RuntimeToolInvoker,
 		updates PromptUpdateWriter,
 	) (string, error)
 }
