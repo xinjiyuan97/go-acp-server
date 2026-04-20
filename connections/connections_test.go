@@ -11,7 +11,7 @@ import (
 	"sync"
 	"testing"
 
-	acpserver "github.com/Pudbot-BeanAI/fucking-agents/crates/go-acp-server"
+	acpserver "github.com/xinjiyuan97/go-acp-server"
 )
 
 type testExecutor struct{}

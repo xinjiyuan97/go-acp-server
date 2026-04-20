@@ -6,7 +6,7 @@ import (
 	"io"
 	"sync"
 
-	acpserver "github.com/Pudbot-BeanAI/fucking-agents/crates/go-acp-server"
+	acpserver "github.com/xinjiyuan97/go-acp-server"
 )
 
 // Endpoint serializes calls into one ACP server instance.

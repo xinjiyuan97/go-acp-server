@@ -15,7 +15,7 @@ It is intentionally model-agnostic: you provide a `PromptExecutor`.
 ## Package
 
 ```go
-import acpserver "github.com/Pudbot-BeanAI/fucking-agents/crates/go-acp-server"
+import acpserver "github.com/xinjiyuan97/go-acp-server"
 ```
 
 ## Quick Start
@@ -90,8 +90,8 @@ beyond stdio.
 
 ```go
 import (
-    acpserver "github.com/Pudbot-BeanAI/fucking-agents/crates/go-acp-server"
-    "github.com/Pudbot-BeanAI/fucking-agents/crates/go-acp-server/connections"
+    acpserver "github.com/xinjiyuan97/go-acp-server"
+    "github.com/xinjiyuan97/go-acp-server/connections"
 )
 ```
 
