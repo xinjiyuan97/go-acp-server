@@ -141,6 +141,32 @@ cd crates/go-acp-server
 go test ./...
 ```
 
+## ACP Test Helper
+
+For developing and testing your own ACP server behaviors, use the built-in
+`acptest` helper package. It supports:
+
+- persistent multi-turn conversations on one session
+- auto-stubbing server->client RPC calls (`fs/*`, `terminal/*`, etc.)
+- formatted turn summaries for debug output
+
+```go
+srv := acpserver.NewServer(&MyExecutor{}, io.Discard, "test")
+d := acptest.NewDriver(srv)
+defer d.Close()
+
+_, _ = d.Initialize(1, map[string]any{
+    "fs": map[string]any{"readTextFile": true},
+})
+_, _, _ = d.NewSession("/tmp", nil)
+
+// Optional: stub outbound client RPC results used by tools.
+d.QueueClientResult("fs/read_text_file", map[string]any{"content": "from-client"})
+
+turn, _ := d.PromptTextCurrent("hello")
+fmt.Println(turn.Format())
+```
+
 ## Chinese Guide
 
 See:
